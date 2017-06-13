@@ -1,0 +1,104 @@
+#2016/06/13
+:local NameAddressList "BlockSpySamsungSmartTV"
+
+# блокируемые домены
+:local DNSDomains {
+  "fb.com"; 
+  "fbcdn.com";
+  "*.samsungelectronics.com";
+  "*.samsungcloudsolution.com";
+  "*.samsungcloudsolution.net";
+  "*.samsungcloudsolution.com";
+  "*.samsungrm.net";
+  "*.samsungotn.net";
+  "*.samsungosp.com";
+  "*.internetat.tv";
+  "*.samsungyosemite.com";
+  "*.cloudfront.net";
+  "*.google-analytics.com";
+  "*.googletagservices.com";
+  "*.googlesyndication.com";
+  "*.amazonaws.com";
+  "*.krxd.net";
+  "*.cloudapp.net";
+  "*.doubleclick.net";
+  "*.xiti.com";
+  "*.pavv.co.kr";
+  "*.adform.net";
+  "*.samsungacr.com";
+  "*.samsungads.com";
+  "*.samsungqbe.com";
+  "*.googleapis.com";
+ #"*.youtube.com";
+}
+
+:local cacheName 
+:local prfx
+:local CurrentDNSDomain
+
+# если ttl<1m, то ttl=1m
+:local recordTTL do={
+  :local TTL
+  :set TTL [/ip dns cache get $1 ttl] ;
+  :if ( $TTL < "00:00:59" ) do={
+    :log debug "      SET TTL: $TTL "
+    :set TTL  "00:00:59"
+  }
+  :return $TTL;
+}
+
+# удаляем записи с истекшим timeout'ом
+/ip firewall address-list remove [find timeout =00:00:00 list =$NameAddressList  ] 
+
+# количество доменов
+:local QuantDNSDomains [:len $DNSDomains]
+log debug "Quant domains:'$QuantDNSDomains'"
+
+
+# по списку доменов
+:for iDNSDomain from=0 to=($QuantDNSDomains-1) do={ 
+
+  # текущий домен
+  :set CurrentDNSDomain  (:put ($DNSDomains->($iDNSDomain)))
+  :log debug "  Find domain:'$CurrentDNSDomain'"
+
+  :set prfx [:pick $CurrentDNSDomain 0 1];
+
+  # домен без префикса
+  :if ($prfx != "*") do={
+
+      #prevent script from using all cpu time
+      delay delay-time=10ms
+
+      # если записи в кеше dns есть
+      :if ( [/ip dns cache all find where (name=$CurrentDNSDomain ) ]!="") do={
+        # если записи ещё нет в address-list - добавляем
+        :if ( [/ip firewall address-list find where address=$CurrentDNSDomain] = "") do={  
+          /ip firewall address-list add address=$CurrentDNSDomain list=$NameAddressList comment=$CurrentDNSDomain;
+        } else {
+           :log debug ("      alreary added in balcklist");
+        }
+      }
+  } else {
+    # есть префикс - убираем
+    :set CurrentDNSDomain [:pick $CurrentDNSDomain 1 [:len $CurrentDNSDomain] ];
+
+    # для каждого домена в кеше dns
+    :foreach i in=[/ip dns cache all find where (name~$CurrentDNSDomain ) ]     do={
+      # ищем содержащее домен dns имя
+      :set cacheName [/ip dns cache get $i name] ;
+      :log debug "   Domain name: '$cacheName'"
+
+      #prevent script from using all cpu time
+      delay delay-time=10ms
+
+      # если не найден в списке адресов - добавляем
+      :if ( [/ip firewall address-list find where address=$cacheName] = "") do={  
+        :log debug ("    CurrentDNSDomain: '$CurrentDNSDomain'        added entry: dns-name: $cacheName  ip-addr:$tmpAddress ttl: [$recordTTL $i] ");
+         /ip firewall address-list add address=$cacheName list=$NameAddressList comment=$CurrentDNSDomain timeout= [$recordTTL $i] ;
+      } else {
+         :log debug ("      alreary added in balcklist");
+      }
+    }
+  }
+}
