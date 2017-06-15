@@ -29,7 +29,7 @@
   "*.samsungads.com";
   "*.samsungqbe.com";
   "*.googleapis.com";
- #"*.youtube.com";
+#"*.youtube.com";
 }
 
 :local cacheName 
